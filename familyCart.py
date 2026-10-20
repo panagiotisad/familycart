@@ -3,17 +3,20 @@ import os
 import time
 import threading
 import json
+import random
 
 #json file containing the groceries
 GROCERIES_FILE = "groceries.json"
 
-#used to load the items from the json to the page
-def load_items():
+#used to load the items for the specific room from the json to the page
+def load_room_items(room_name):
     #if the file doesnt exist(if no items are added then do nothing)
     if os.path.exists(GROCERIES_FILE):
         try:
             with open(GROCERIES_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                #if it cant retrieve room_name data it returns an empty array
+                return data.get(room_name,[])
         except Exception as e:
             #returns an empty list to not break the program
             print(f"error at loading json content: {e}")
@@ -22,10 +25,19 @@ def load_items():
     return []
 
 #used to add new items to the json
-def save_items(items):
+def save_room_items(room_name,items):
+    data = {}
+    if os.path.exists(GROCERIES_FILE):
+            try:
+                with open(GROCERIES_FILE, "r") as f:
+                    data = json.load(f)
+            except Exception as e:
+                print(f"error at reading json content: {e}")
+                pass
+    data[room_name] = items
     try:
         with open(GROCERIES_FILE, "w") as f:
-            json.dump(items, f)
+            json.dump(data, f)
     except Exception as e:
         print(f"error saving json: {e}")
 
@@ -45,6 +57,42 @@ def main(page: ft.Page):
         alignment=ft.MainAxisAlignment.CENTER
     )
 
+    #current room
+    user_room = page.client_storage.get("user_room")
+    if user_room:
+        current_room = user_room
+    else:
+        room_randomizer = random.randint(1,999999999)
+        current_room = "room" + str(room_randomizer)
+        page.client_storage.set("user_room", current_room)
+    #in page room selection
+    room_input = ft.TextField(
+        expand=True, 
+        height=40,
+        text_size=14,
+        hint_text="Room name..."
+    )
+
+    #in page current room text
+    room_display = ft.Text(f"Current Room: {current_room}", size=14, weight=ft.FontWeight.BOLD, color="#36618e")
+
+    #used to switch rooms
+    def switch_room(e):
+        #needed to find the current_room variable outside of function scope
+        nonlocal current_room
+        new_room = room_input.value.strip()
+        if not new_room:
+            return
+        current_room = new_room
+        room_display.value = f"Current Room: {current_room}"
+        page.client_storage.set("user_room", current_room)
+        refresh_list()
+        page.update()
+
+    #in page switch room button
+    room_button = ft.ElevatedButton("Switch Room", on_click=switch_room)
+    room_row = ft.Row(controls=[room_input, room_button])
+
     #grocery list appearance
     grocery_list = ft.ListView(expand=1, spacing=5, padding=10, auto_scroll=True)
 
@@ -53,36 +101,36 @@ def main(page: ft.Page):
         grocery_list.controls.clear()
         
         #Load items from the groceries.json file 
-        GROCERY_ITEMS = load_items()
+        GROCERY_ITEMS = load_room_items(current_room)
         
         for index, item in enumerate(GROCERY_ITEMS):
             item_index = index
 
             #used for deleting list items
             def delete_item(e,itemIndex=item_index):
-                items = load_items()
+                items = load_room_items(current_room)
                 if itemIndex < len(items):
                     items.pop(itemIndex)
-                    save_items(items)
-                    page.pubsub.send_all("update_list")  
+                    save_room_items(current_room,items)
+                    page.pubsub.send_all(f"update_{current_room}")  
 
             #used for the checkbox of each item to work
             def checkbox_click(e,itemIndex=item_index):
-                items = load_items()
+                items = load_room_items(current_room)
                 if itemIndex < len(items):
                     items[itemIndex]["checked"] = e.control.value
-                    save_items(items)
-                    page.pubsub.send_all("update_list")  
+                    save_room_items(current_room,items)
+                    page.pubsub.send_all(f"update_{current_room}")
                 
                 #if checkbox is checked
                 if e.control.value:
                     def delete_item_thread(i=itemIndex):
                         time.sleep(10)
-                        items = load_items()
+                        items = load_room_items(current_room)
                         if i < len(items) and items[i].get("checked"):
                             items.pop(i)
-                            save_items(items)
-                            page.pubsub.send_all("update_list")
+                            save_room_items(current_room,items)
+                            page.pubsub.send_all(f"update_{current_room}")
                     threading.Thread(target=delete_item_thread, daemon=True).start()
 
             #creates the checkbox
@@ -127,9 +175,9 @@ def main(page: ft.Page):
         page.update()
 
 
-    #used to catch all messages by all users 
+    #used to catch all messages by all users and update the list of each room when needed
     def sync_function(message):
-        if message == "update_list":
+        if message == f"update_{current_room}":
             refresh_list()
     page.pubsub.subscribe(sync_function)
 
@@ -140,13 +188,13 @@ def main(page: ft.Page):
             return
 
         
-        items = load_items()
+        items = load_room_items(current_room)
         items.append({"text": add_item_searchbar.value.strip(), "checked": False})
-        save_items(items)
+        save_room_items(current_room,items)
 
         add_item_searchbar.value = ""
         add_item_searchbar.focus()
-        page.pubsub.send_all("update_list")  
+        page.pubsub.send_all(f"update_{current_room}")
 
     #creates the searchbar
     add_item_searchbar = ft.TextField(
@@ -164,6 +212,8 @@ def main(page: ft.Page):
     #adds the content to the page
     page.add(
         title,
+        room_display,
+        room_row,
         ft.Divider(height=20),
         input_row,
         ft.Divider(height=20),
