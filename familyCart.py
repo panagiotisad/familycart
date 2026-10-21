@@ -70,11 +70,11 @@ def main(page: ft.Page):
         expand=True, 
         height=40,
         text_size=14,
-        hint_text="Room name..."
+        hint_text="list name..."
     )
 
     #in page current room text
-    room_display = ft.Text(f"Current Room: {current_room}", size=14, weight=ft.FontWeight.BOLD, color="#36618e")
+    room_display = ft.Text(f"Current list: {current_room}", size=14, weight=ft.FontWeight.BOLD, color="#36618e")
 
     #used to switch rooms
     def switch_room(e):
