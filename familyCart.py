@@ -63,7 +63,7 @@ def main(page: ft.Page):
         current_room = user_room
     else:
         room_randomizer = random.randint(1,999999999)
-        current_room = "room" + str(room_randomizer)
+        current_room = "list" + str(room_randomizer)
         page.client_storage.set("user_room", current_room)
     #in page room selection
     room_input = ft.TextField(
@@ -106,10 +106,6 @@ def main(page: ft.Page):
         for index, item in enumerate(GROCERY_ITEMS):
             item_index = index
 
-            #used to know if the item is new on the list
-            if "new item" not in item:
-                item["new item"] = True
-            
             #used for deleting list items
             def delete_item(e,itemIndex=item_index):
                 items = load_room_items(current_room)
@@ -147,42 +143,23 @@ def main(page: ft.Page):
                 expand=True
             )
 
-            #creates the row
-            list_row = ft.Row(
-                controls=[checkbox, item_label],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER
-            )  
-
-             #creates the delete button only for new items
-            if item.get("new item",True):
-                delete_button = ft.IconButton(
+            #creates the delete button
+            delete_button = ft.IconButton(
                 icon=ft.Icons.DELETE_OUTLINE, 
                 icon_color="red400", 
                 icon_size=28,
                 on_click=delete_item
-                )
-                list_row.controls.append(delete_button)
-            
+            )
+
+            #creates the row
+            list_row = ft.Row(
+                controls=[checkbox, item_label, delete_button],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER
+            )
+
             #adds it to the page
             grocery_list.controls.append(list_row)
-
-            #used to remove the delete button after 30 sec of row creation
-            def delete_icon_removal_thread(row=list_row, label=item_label, check_box=checkbox,i = item_index):
-                try:
-                    time.sleep(30)
-                    if row in grocery_list.controls:
-                            row.controls = [check_box, label]
-                            items = load_room_items(current_room)
-                            if i < len(items):
-                                items[i]["new item"] = False
-                                save_room_items(current_room, items)
-                                page.pubsub.send_all(f"update_{current_room}")
-                            page.update()
-                except Exception:
-                    pass
-            if item.get("new item",True):
-                threading.Thread(target=delete_icon_removal_thread, daemon=True).start()
         page.update()
 
 
