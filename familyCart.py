@@ -106,6 +106,10 @@ def main(page: ft.Page):
         for index, item in enumerate(GROCERY_ITEMS):
             item_index = index
 
+            #used to know if the item is new on the list
+            if "new item" not in item:
+                item["new item"] = True
+            
             #used for deleting list items
             def delete_item(e,itemIndex=item_index):
                 items = load_room_items(current_room)
@@ -143,35 +147,42 @@ def main(page: ft.Page):
                 expand=True
             )
 
-            #creates the delete button
-            delete_button = ft.IconButton(
+            #creates the row
+            list_row = ft.Row(
+                controls=[checkbox, item_label],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER
+            )  
+
+             #creates the delete button only for new items
+            if item.get("new item",True):
+                delete_button = ft.IconButton(
                 icon=ft.Icons.DELETE_OUTLINE, 
                 icon_color="red400", 
                 icon_size=28,
                 on_click=delete_item
-            )
-
-            #creates the row
-            list_row = ft.Row(
-                controls=[checkbox, item_label, delete_button],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER
-            )
-
+                )
+                list_row.controls.append(delete_button)
+            
             #adds it to the page
             grocery_list.controls.append(list_row)
 
             #used to remove the delete button after 30 sec of row creation
-            def delete_icon_removal_thread(row=list_row, label=item_label, check_box=checkbox):
-                time.sleep(30)
+            def delete_icon_removal_thread(row=list_row, label=item_label, check_box=checkbox,i = item_index):
                 try:
+                    time.sleep(30)
                     if row in grocery_list.controls:
-                        row.controls = [check_box, label]
-                        page.update()
+                            row.controls = [check_box, label]
+                            items = load_room_items(current_room)
+                            if i < len(items):
+                                items[i]["new item"] = False
+                                save_room_items(current_room, items)
+                                page.pubsub.send_all(f"update_{current_room}")
+                            page.update()
                 except Exception:
                     pass
-            threading.Thread(target=delete_icon_removal_thread, daemon=True).start()
-
+            if item.get("new item",True):
+                threading.Thread(target=delete_icon_removal_thread, daemon=True).start()
         page.update()
 
 
