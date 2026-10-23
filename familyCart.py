@@ -63,7 +63,7 @@ def main(page: ft.Page):
         current_room = user_room
     else:
         room_randomizer = random.randint(1,999999999)
-        current_room = "list" + str(room_randomizer)
+        current_room = "room" + str(room_randomizer)
         page.client_storage.set("user_room", current_room)
     #in page room selection
     room_input = ft.TextField(
