@@ -7,39 +7,43 @@ import random
 
 #json file containing the groceries
 GROCERIES_FILE = "groceries.json"
+file_lock = threading.Lock()
 
 #used to load the items for the specific room from the json to the page
 def load_room_items(room_name):
     #if the file doesnt exist(if no items are added then do nothing)
-    if os.path.exists(GROCERIES_FILE):
-        try:
-            with open(GROCERIES_FILE, "r") as f:
-                data = json.load(f)
-                #if it cant retrieve room_name data it returns an empty array
-                return data.get(room_name,[])
-        except Exception as e:
-            #returns an empty list to not break the program
-            print(f"error at loading json content: {e}")
-            return []
+    with file_lock:
+        if os.path.exists(GROCERIES_FILE):
+            try:
+                with open(GROCERIES_FILE, "r") as f:
+                    data = json.load(f)
+                    #if it cant retrieve room_name data it returns an empty array
+                    return data.get(room_name,[])
+            except Exception as e:
+                #returns an empty list to not break the program
+                print(f"error at loading json content: {e}")
+                return []
     #returns an empty list to not break the program
     return []
 
 #used to add new items to the json
 def save_room_items(room_name,items):
-    data = {}
-    if os.path.exists(GROCERIES_FILE):
-            try:
-                with open(GROCERIES_FILE, "r") as f:
-                    data = json.load(f)
-            except Exception as e:
-                print(f"error at reading json content: {e}")
-                pass
-    data[room_name] = items
-    try:
-        with open(GROCERIES_FILE, "w") as f:
-            json.dump(data, f)
-    except Exception as e:
-        print(f"error saving json: {e}")
+    with file_lock:
+        data = {}
+        if os.path.exists(GROCERIES_FILE):
+                try:
+                    with open(GROCERIES_FILE, "r") as f:
+                        data = json.load(f)
+                except Exception as e:
+                    print(f"error at reading json content: {e}")
+                    pass
+        data[room_name] = items
+        try:
+            with open(GROCERIES_FILE + ".tmp", "w") as f:
+                json.dump(data, f)
+            os.replace(GROCERIES_FILE + ".tmp", GROCERIES_FILE)
+        except Exception as e:
+            print(f"error saving json: {e}")
 
 def main(page: ft.Page):
 
@@ -104,33 +108,39 @@ def main(page: ft.Page):
         GROCERY_ITEMS = load_room_items(current_room)
         
         for index, item in enumerate(GROCERY_ITEMS):
-            item_index = index
+            item_id = item.get("id")
 
             #used for deleting list items
-            def delete_item(e,itemIndex=item_index):
+            def delete_item(e,itemId =item_id):
                 items = load_room_items(current_room)
-                if itemIndex < len(items):
-                    items.pop(itemIndex)
-                    save_room_items(current_room,items)
-                    page.pubsub.send_all(f"update_{current_room}")  
+                for i in items:
+                    if i.get("id") == itemId:
+                        items.remove(i)
+                        break
+                save_room_items(current_room,items)
+                page.pubsub.send_all(f"update_{current_room}")  
 
             #used for the checkbox of each item to work
-            def checkbox_click(e,itemIndex=item_index):
+            def checkbox_click(e,itemId =item_id):
                 items = load_room_items(current_room)
-                if itemIndex < len(items):
-                    items[itemIndex]["checked"] = e.control.value
-                    save_room_items(current_room,items)
-                    page.pubsub.send_all(f"update_{current_room}")
+                for i in items:
+                    if i.get("id") == itemId:
+                        i["checked"] = e.control.value
+                        break
+                save_room_items(current_room,items)
+                page.pubsub.send_all(f"update_{current_room}")
                 
                 #if checkbox is checked
                 if e.control.value:
-                    def delete_item_thread(i=itemIndex):
+                    def delete_item_thread(itemId =item_id):
                         time.sleep(10)
                         items = load_room_items(current_room)
-                        if i < len(items) and items[i].get("checked"):
-                            items.pop(i)
-                            save_room_items(current_room,items)
-                            page.pubsub.send_all(f"update_{current_room}")
+                        for i in items:
+                            if i.get("id") == itemId and i.get("checked"):
+                                items.remove(i)
+                                break
+                        save_room_items(current_room,items)
+                        page.pubsub.send_all(f"update_{current_room}")
                     threading.Thread(target=delete_item_thread, daemon=True).start()
 
             #creates the checkbox
@@ -143,20 +153,26 @@ def main(page: ft.Page):
                 expand=True
             )
 
-            #creates the delete button
-            delete_button = ft.IconButton(
-                icon=ft.Icons.DELETE_OUTLINE, 
-                icon_color="red400", 
-                icon_size=28,
-                on_click=delete_item
-            )
-
-            #creates the row
-            list_row = ft.Row(
-                controls=[checkbox, item_label, delete_button],
-                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                vertical_alignment=ft.CrossAxisAlignment.CENTER
-            )
+            if item.get("new_item", False):
+                #creates the delete button
+                delete_button = ft.IconButton(
+                    icon=ft.Icons.DELETE_OUTLINE, 
+                    icon_color="red400", 
+                    icon_size=28,
+                    on_click=delete_item
+                )
+                #creates the row
+                list_row = ft.Row(
+                    controls=[checkbox, item_label, delete_button],
+                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    vertical_alignment=ft.CrossAxisAlignment.CENTER
+                )
+            else:
+                list_row = ft.Row(
+                                    controls=[checkbox, item_label],
+                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                    vertical_alignment=ft.CrossAxisAlignment.CENTER
+                                )
 
             #adds it to the page
             grocery_list.controls.append(list_row)
@@ -175,9 +191,19 @@ def main(page: ft.Page):
         if not add_item_searchbar.value.strip():
             return
 
-        
+        item_id = str(random.randint(1, 999999999999))
         items = load_room_items(current_room)
-        items.append({"text": add_item_searchbar.value.strip(), "checked": False})
+        items.append({"text": add_item_searchbar.value.strip(), "checked": False,"new_item": True,"id":item_id})
+        def change_new_item_status_thread():
+            time.sleep(30)
+            items = load_room_items(current_room)
+            for item in items:
+                if item.get("id") == item_id:
+                    item["new_item"] = False
+                    break
+            save_room_items(current_room,items)
+            page.pubsub.send_all(f"update_{current_room}")
+        threading.Thread(target=change_new_item_status_thread, daemon=True).start()
         save_room_items(current_room,items)
 
         add_item_searchbar.value = ""
