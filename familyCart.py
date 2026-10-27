@@ -132,7 +132,7 @@ def main(page: ft.Page):
                 
                 #if checkbox is checked
                 if e.control.value:
-                    def delete_item_thread(itemId =item_id):
+                    def delete_item_thread(itemId =itemId):
                         time.sleep(10)
                         items = load_room_items(current_room)
                         for i in items:
