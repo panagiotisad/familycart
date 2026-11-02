@@ -5,6 +5,14 @@ from difflib import SequenceMatcher
 
 EXCLUDE_WORDS = {"gia", "kai", "me", "to", "ta", "o", "i", "oi", "tou", "tis", "ton", "tin", "apo", "se", "sto", "ston"}
 
+#common words that are typed in another way than displayed in the supermarket
+WORDS_CHANGE = {
+    "krasi":"oinos",
+    "mpura":"mpira",
+    "mpures":"mpira",
+    "ntomata":"tomata",
+}
+
 GREEK_TO_GREEKLISH = str.maketrans({
     "α": "a",
     "β": "v",
@@ -26,7 +34,7 @@ GREEK_TO_GREEKLISH = str.maketrans({
     "σ": "s",
     "ς": "s",
     "τ": "t",
-    "υ": "y",
+    "υ": "u",
     "φ": "f",
     "χ": "ch",
     "ψ": "ps",
@@ -93,6 +101,9 @@ def find_matches(search_item):
         if word not in EXCLUDE_WORDS:
             grocery_words.append(word)
     matches = []
+    for i, word in enumerate(grocery_words):
+        if word in WORDS_CHANGE:
+            grocery_words[i] = WORDS_CHANGE[word]
 
     for offer in offers:
         offer_product = offer["product_greeklish_name"]
