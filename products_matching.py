@@ -3,7 +3,7 @@ import re
 import unicodedata
 from difflib import SequenceMatcher
 
-
+EXCLUDE_WORDS = {"gia", "kai", "me", "to", "ta", "o", "i", "oi", "tou", "tis", "ton", "tin", "apo", "se", "sto", "ston"}
 
 GREEK_TO_GREEKLISH = str.maketrans({
     "α": "a",
@@ -88,21 +88,31 @@ def greek_to_greeklish(text):
 def find_matches(search_item):
 
     grocery = greek_to_greeklish(search_item)
-    grocery_words = grocery.split()
+    grocery_words = []
+    for word in grocery.split():
+        if word not in EXCLUDE_WORDS:
+            grocery_words.append(word)
     matches = []
 
     for offer in offers:
         offer_product = offer["product_greeklish_name"]
-        offer_product_words = offer_product.split()
+        offer_product_words = []
+        for word in offer_product.split():
+            if word not in EXCLUDE_WORDS:
+                offer_product_words.append(word)
         
         #excact match or a word match or the option to see all offer products("all products")
         if grocery == offer_product or grocery == "all products":
             score = 1.0
-        elif any(word in offer_product_words for word in grocery_words):
-            score = 0.95
+        elif grocery_words:
+            words_score = 0
+            for word in grocery_words:
+                if word in offer_product_words:
+                    words_score +=1
+            score =  words_score/ len(grocery_words)
         else:
             score = 0
-        if score>=0.95:
+        if score>=0.7:
             matches.append((score, offer))
 
     #sorts the matches to display them by score
