@@ -4,10 +4,15 @@ import time
 import threading
 import json
 import random
+import supermarket_scrapper,products_matching
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 
 #json file containing the groceries
 GROCERIES_FILE = "groceries.json"
 file_lock = threading.Lock()
+refresh_list_lock = threading.Lock()
 
 #used to load the items for the specific room from the json to the page
 def load_room_items(room_name):
@@ -45,20 +50,135 @@ def save_room_items(room_name,items):
         except Exception as e:
             print(f"error saving json: {e}")
 
+#runs the scrapper each day at 6 am 
+def scraper_loop():
+    last_run = None
+    while True:
+        now = datetime.now(ZoneInfo("Europe/Athens"))
+        if now.hour == 6 and now.minute == 0 and last_run != now.date():
+            last_run = now.date()
+            try:
+                supermarket_scrapper.run_scrapper()
+            except Exception as e:
+                print(f"scraper failed: {e}")
+        time.sleep(30)
+
+
 def main(page: ft.Page):
 
     #main page config
-    page.title = "family cart"
+    page.title = "familyCart"
     page.window.icon = "favicon.png" 
     page.theme_mode = ft.ThemeMode.LIGHT
     page.vertical_alignment = "start"
     page.padding = 20
     page.bgcolor = "#F3FCFC"
 
-    #in page title text
+    #function to pop the last page on the stack
+    def pop_page(e):
+        page.views.pop()
+        page.update()
+
+    #offers page
+    def offers_page(item_text,matches):
+       
+        #added height to have some free space on top 
+        offers = [ft.Container(height=30)]
+
+        for score,offer in matches:
+            if "sklavenitis" in offer["link"]:
+                supermarket_name = "Σκλαβενιτης"
+                supermarket_color = "#F5830A"
+            elif "ab" in offer["link"]:
+                supermarket_name = "AB"
+                supermarket_color = "#2D5FC9"
+            #fixes a spacing error in sklavenitis offer text
+            offer_text = offer["product_offer"]
+            if "Δώρο" in offer["product_offer"]:
+                offer_text = offer["product_offer"].replace("Δώρο"," Δώρο")
+            offers.append(ft.Row(
+                [
+                ft.Text(
+                    offer["product_name"] + "  ",
+                    size=16,
+                    expand=True,
+                    spans=[
+                        ft.TextSpan(
+                            f"{offer["price"]}€  ",
+                            style=ft.TextStyle(color="#4DBA17", weight=ft.FontWeight.BOLD),
+                    ),
+                    ft.TextSpan(
+                        f"{offer_text}  ",
+                        style =ft.TextStyle(color="#DA6B21",weight=ft.FontWeight.BOLD),
+                    ),
+                    ft.TextSpan(
+                        f"{supermarket_name}  ",
+                        style=ft.TextStyle(color=supermarket_color,weight=ft.FontWeight.BOLD),
+                    ),
+                ],
+            ),
+                ft.TextButton(
+                    content=ft.Text("see on website", size=16),
+                    url=offer["link"],
+                    #opens the page in a new tab so the app stays open
+                    url_target=ft.UrlTarget.BLANK,
+                 ),
+                 ],
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+              )
+            )
+
+        
+        page.views.append(
+            ft.View(
+                "/offers",
+                offers,
+                bgcolor="#F3FCFC",
+                scroll=ft.ScrollMode.AUTO,      
+                appbar=ft.AppBar(
+                    leading=ft.IconButton(icon=ft.Icons.ARROW_BACK, on_click=pop_page,icon_color="#36618e"),
+                    title=ft.Text(f"Offers for {item_text}",size=26,color="#36618e",weight=ft.FontWeight.BOLD),
+                    center_title=True
+                ),
+            )
+        )
+        page.update()
+    
+    #in page title text and all item offer row 
+    matches = products_matching.find_matches("all products")
     title = ft.Row(
-        controls=[ft.Text("Grocery List", size=28, weight=ft.FontWeight.BOLD, color="#36618e")],
-        alignment=ft.MainAxisAlignment.CENTER
+    controls=[
+        ft.Container(expand=1),
+        ft.Container(
+            content=ft.Text(
+                "Grocery List",
+                size=24,
+                weight=ft.FontWeight.BOLD,
+                color="#36618e",
+                text_align=ft.TextAlign.CENTER,
+            ),
+            expand=2,
+            alignment=ft.alignment.center,
+        ),
+        ft.Container(
+            content=ft.TextButton(
+                content=ft.Row(
+                    controls=[
+                        ft.Text("See all offers", size=14, color="#36618e", weight=ft.FontWeight.BOLD),
+                        ft.Icon(name=ft.Icons.ARROW_FORWARD, color="#36618e", size=16),
+                    ],
+                    spacing=2,
+                    tight=True,
+                ),
+                on_click=lambda e, text="all", matches=matches: offers_page(text, matches),
+                style=ft.ButtonStyle(padding=0),
+            ),
+            expand=1,
+            alignment=ft.alignment.center_right,
+        ),
+    ],
+    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+    vertical_alignment=ft.CrossAxisAlignment.CENTER,
     )
 
     #current room
@@ -88,26 +208,26 @@ def main(page: ft.Page):
         if not new_room:
             return
         current_room = new_room
-        room_display.value = f"Current Room: {current_room}"
+        room_display.value = f"Current list: {current_room}"
         page.client_storage.set("user_room", current_room)
         refresh_list()
         page.update()
 
     #in page switch room button
-    room_button = ft.ElevatedButton("Switch Room", on_click=switch_room)
+    room_button = ft.ElevatedButton("Switch list", on_click=switch_room)
     room_row = ft.Row(controls=[room_input, room_button])
 
     #grocery list appearance
     grocery_list = ft.ListView(expand=1, spacing=5, padding=10, auto_scroll=True)
 
     #used to update the list for everyone when it changes
-    def refresh_list():
+    def refresh_list_func():
         grocery_list.controls.clear()
         
         #Load items from the groceries.json file 
         GROCERY_ITEMS = load_room_items(current_room)
         
-        for index, item in enumerate(GROCERY_ITEMS):
+        for index,item in enumerate(GROCERY_ITEMS):
             item_id = item.get("id")
 
             #used for deleting list items
@@ -173,11 +293,23 @@ def main(page: ft.Page):
                                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                                     vertical_alignment=ft.CrossAxisAlignment.CENTER
                                 )
-
+            
+            #gets the matches for the offers
+            matches = products_matching.find_matches(item["text"])
+            if matches:
+                list_row.controls.append(ft.IconButton(
+                    icon=ft.Icons.LOCAL_OFFER,
+                    icon_color="#F58F0A",
+                    on_click=lambda e, text=item["text"], matches=matches: offers_page(text, matches)))
             #adds it to the page
             grocery_list.controls.append(list_row)
         page.update()
 
+
+    #using thread lock to only do one refresh at a time
+    def refresh_list():
+        with refresh_list_lock:
+            refresh_list_func()
 
     #used to catch all messages by all users and update the list of each room when needed
     def sync_function(message):
@@ -239,5 +371,7 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
+    #starts the thread for the scrapper  
+    threading.Thread(target=scraper_loop, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     ft.app(target=main, view=ft.AppView.WEB_BROWSER, port=port, host="0.0.0.0", assets_dir="assets")
