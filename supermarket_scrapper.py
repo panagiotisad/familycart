@@ -1,4 +1,4 @@
-import requests
+from curl_cffi import requests
 from bs4 import BeautifulSoup
 import json
 import products_matching
@@ -14,7 +14,7 @@ def run_scrapper():
     url = "https://www.sklavenitis.gr/sylloges/prosfores/"
     range_end = 300 
     for page in range(1,range_end):
-        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"},params={"pg":page}, timeout=30)
+        response = requests.get(url, impersonate="chrome",params={"pg":page}, timeout=30)
         #checks for http errors
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
@@ -74,7 +74,7 @@ def run_scrapper():
     #saves the offers array to the json        
     with open("offers.json","w") as f:
         json.dump(offers,f,ensure_ascii=False, indent=4)
-        #calls the function to load the offers on an array on products_matching 
+    #calls the function to load the offers on an array on products_matching 
     products_matching.load_offers()
     
 if __name__ == "__main__":
