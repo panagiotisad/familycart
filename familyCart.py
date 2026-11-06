@@ -50,12 +50,12 @@ def save_room_items(room_name,items):
         except Exception as e:
             print(f"error saving json: {e}")
 
-#runs the scrapper each day at 6 am 
+#runs the scrapper each day at 8 am 
 def scraper_loop():
     last_run = None
     while True:
         now = datetime.now(ZoneInfo("Europe/Athens"))
-        if now.hour == 6 and now.minute == 0 and last_run != now.date():
+        if now.hour == 8 and now.minute == 0 and last_run != now.date():
             last_run = now.date()
             try:
                 supermarket_scrapper.run_scrapper()
